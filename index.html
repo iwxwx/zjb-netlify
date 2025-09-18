@@ -1,0 +1,15 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>任务确认</title><body>
+<h2>请确认完成</h2><p>点击下方按钮即可回传完成状态；可填写备注。</p>
+<textarea id="remark" rows="3" placeholder="例如：已完成，见截图…"></textarea><br/>
+<button id="done">完成并提交</button><div id="tip"></div>
+<script>
+  const sid = new URLSearchParams(location.search).get('sid')||'';
+  document.getElementById('done').onclick = async ()=>{
+    const remark = document.getElementById('remark').value||'';
+    try{
+      const r=await fetch('/.netlify/functions/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sid,remark})});
+      const d=await r.json(); if(!r.ok||!d.ok) throw new Error(d.message||'提交失败');
+      document.getElementById('tip').innerHTML='<p style="color:green">已记录完成</p>';
+    }catch(e){ document.getElementById('tip').innerHTML='<p style="color:red">'+e.message+'</p>'; }
+  };
+</script></body></html>
