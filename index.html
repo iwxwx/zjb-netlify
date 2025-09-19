@@ -30,75 +30,84 @@
   </div>
 
   <script>
+    // ===== 基础参数与工具 =====
     const qs = new URLSearchParams(location.search);
     const sid     = qs.get('sid') || '';
     const unionid = qs.get('unionid') || '';
     const dueTime = qs.get('dueTime') || '';
+    const FN_URL  = '/.netlify/functions/feedback';
 
     const tip = document.getElementById('tip');
     const btn = document.getElementById('done');
     const remarkEl = document.getElementById('remark');
 
     const buildViewUrl = (dataOrRemark) => {
-      const rmk = typeof dataOrRemark === 'string'
+      const remark = (typeof dataOrRemark === 'string')
         ? dataOrRemark
-        : (dataOrRemark?.remark || '');
-      const u = typeof dataOrRemark === 'object' && dataOrRemark?.unionid ? dataOrRemark.unionid : unionid;
-      const d = typeof dataOrRemark === 'object' && dataOrRemark?.dueTime ? dataOrRemark.dueTime : dueTime;
-      const p = new URLSearchParams({ sid, unionid: u || '', dueTime: d || '', remark: rmk || '' });
+        : (dataOrRemark && dataOrRemark.remark) || '';
+      const u = (typeof dataOrRemark === 'object' && dataOrRemark.unionid) ? dataOrRemark.unionid : unionid;
+      const d = (typeof dataOrRemark === 'object' && dataOrRemark.dueTime) ? dataOrRemark.dueTime : dueTime;
+      const p = new URLSearchParams({ sid, unionid: u || '', dueTime: d || '', remark: remark || '' });
       return `${location.origin}/view.html?${p.toString()}`;
     };
 
-    // ===== 进入页面先查一次状态：已提交则直接跳到只读页 =====
+    const jumpToView = (recordOrRemark='') => {
+      const href = (recordOrRemark && recordOrRemark.detailUrl)
+        ? recordOrRemark.detailUrl
+        : buildViewUrl(recordOrRemark);
+      location.replace(href);
+    };
+
+    const showErr = (msg) => { tip.className='tip err'; tip.textContent = msg; };
+    const showOk  = (html) => { tip.className='tip ok';  tip.innerHTML  = html; };
+
+    // ===== 进入页面：先查状态（已提交则直接只读）=====
     (async () => {
-      if (!sid) return;
+      if (!sid) { showErr('缺少 sid，无法提交'); btn.disabled = true; return; }
       try {
-        const r = await fetch(`/.netlify/functions/feedback?op=status&sid=${encodeURIComponent(sid)}`);
+        const r = await fetch(`${FN_URL}?op=status&sid=${encodeURIComponent(sid)}`);
         const d = await r.json();
-        if (d.done && d.record) {
-          location.replace(buildViewUrl(d.record)); // 只读
-        }
-      } catch {}
+        if (d.done && d.record) jumpToView(d.record); // 已提交：跳只读
+      } catch { /* 忽略，交由用户点击时再处理 */ }
     })();
 
+    // ===== 点击提交 =====
     btn.addEventListener('click', async () => {
       const remark = remarkEl.value || '';
-      const viewUrl = buildViewUrl(remark);
+      const detailUrl = buildViewUrl(remark);
 
       btn.disabled = true;
       tip.className = 'tip';
       tip.textContent = '正在提交…';
 
       try {
-        const r = await fetch('/.netlify/functions/feedback', {
+        const r = await fetch(FN_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sid, unionid, dueTime, remark, detailUrl: viewUrl })
+          body: JSON.stringify({ sid, unionid, dueTime, remark, detailUrl })
         });
-        const data = await r.json();
+        const data = await r.json().catch(() => ({}));
 
-        // 已提交过（409）→ 直接跳只读
+        // 已被他人/自己先提交：后端返回 409
         if (r.status === 409 || data.error === 'already_submitted') {
-          location.replace(buildViewUrl(data.record || ''));
+          jumpToView(data.record || '');
           return;
         }
 
-        if (!r.ok || !data.ok) throw new Error(data.error || '提交失败');
+        if (!r.ok || !data.ok) throw new Error(data.error || '提交失败，请稍后重试');
 
-        tip.className = 'tip ok';
-        tip.innerHTML = `
-          已记录完成。<br>
+        // 成功：禁用按钮并提供查看详情
+        btn.disabled = true;
+        const viewUrl = data.detailUrl || detailUrl;
+        showOk(`已记录完成。<br>
           SID：<code>${data.sid}</code><br>
           备注：${data.remark || '—'}<br>
           时间：${data.timeCN}<br>
           <a class="link" href="${viewUrl}" target="_blank">👉 查看详情</a>
-        `;
-        // 成功后不再允许再次提交
-        btn.disabled = true;
+        `);
       } catch (e) {
-        tip.className = 'tip err';
-        tip.textContent = e.message || String(e);
-        btn.disabled = false;
+        showErr(e.message || String(e));
+        btn.disabled = false; // 失败可重试
       }
     });
   </script>
