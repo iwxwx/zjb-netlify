@@ -1,15 +1,54 @@
-<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>任务确认</title><body>
-<h2>请确认完成</h2><p>点击下方按钮即可回传完成状态；可填写备注。</p>
-<textarea id="remark" rows="3" placeholder="例如：已完成，见截图…"></textarea><br/>
-<button id="done">完成并提交</button><div id="tip"></div>
-<script>
-  const sid = new URLSearchParams(location.search).get('sid')||'';
-  document.getElementById('done').onclick = async ()=>{
-    const remark = document.getElementById('remark').value||'';
-    try{
-      const r=await fetch('/.netlify/functions/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sid,remark})});
-      const d=await r.json(); if(!r.ok||!d.ok) throw new Error(d.message||'提交失败');
-      document.getElementById('tip').innerHTML='<p style="color:green">已记录完成</p>';
-    }catch(e){ document.getElementById('tip').innerHTML='<p style="color:red">'+e.message+'</p>'; }
-  };
-</script></body></html>
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>任务确认</title>
+<body>
+  <h2>请确认完成</h2>
+  <p>点击下方按钮即可回传完成状态；可填写备注。</p>
+
+  <textarea id="remark" rows="3" placeholder="例如：已完成，见截图…"></textarea><br/>
+  <button id="done">完成并提交</button>
+  <div id="tip"></div>
+
+  <script>
+    // 从 URL 取参数（sid/unionid/dueTime）
+    const qs = new URLSearchParams(location.search);
+    const sid     = qs.get('sid') || '';
+    const unionid = qs.get('unionid') || '';
+    const dueTime = qs.get('dueTime') || '';
+
+    const tip = document.getElementById('tip');
+    const btn = document.getElementById('done');
+
+    btn.onclick = async () => {
+      const remark = document.getElementById('remark').value || '';
+      btn.disabled = true;
+      tip.innerHTML = '';
+
+      try {
+        const r = await fetch('/.netlify/functions/feedback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sid, unionid, dueTime, remark })
+        });
+
+        // 函数现在保证返回 JSON
+        const d = await r.json();
+        if (!r.ok || !d.ok) throw new Error(d.error || '提交失败');
+
+        tip.innerHTML = `
+          <p style="color:green">已记录完成</p>
+          <p>SID：<code>${d.sid}</code></p>
+          <p>备注：${d.remark || '—'}</p>
+          <p>时间：${d.timeCN}</p>
+        `;
+      } catch (e) {
+        tip.innerHTML = `<p style="color:red">${e.message || e}</p>`;
+      } finally {
+        btn.disabled = false;
+      }
+    };
+  </script>
+</body>
+</html>
