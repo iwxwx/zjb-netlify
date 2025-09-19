@@ -30,7 +30,6 @@
   </div>
 
   <script>
-    // 从 URL 取参数
     const qs = new URLSearchParams(location.search);
     const sid     = qs.get('sid') || '';
     const unionid = qs.get('unionid') || '';
@@ -40,11 +39,27 @@
     const btn = document.getElementById('done');
     const remarkEl = document.getElementById('remark');
 
-    // 生成只读详情页链接（view.html）
-    const buildViewUrl = (remark) => {
-      const p = new URLSearchParams({ sid, unionid, dueTime, remark });
+    const buildViewUrl = (dataOrRemark) => {
+      const rmk = typeof dataOrRemark === 'string'
+        ? dataOrRemark
+        : (dataOrRemark?.remark || '');
+      const u = typeof dataOrRemark === 'object' && dataOrRemark?.unionid ? dataOrRemark.unionid : unionid;
+      const d = typeof dataOrRemark === 'object' && dataOrRemark?.dueTime ? dataOrRemark.dueTime : dueTime;
+      const p = new URLSearchParams({ sid, unionid: u || '', dueTime: d || '', remark: rmk || '' });
       return `${location.origin}/view.html?${p.toString()}`;
     };
+
+    // ===== 进入页面先查一次状态：已提交则直接跳到只读页 =====
+    (async () => {
+      if (!sid) return;
+      try {
+        const r = await fetch(`/.netlify/functions/feedback?op=status&sid=${encodeURIComponent(sid)}`);
+        const d = await r.json();
+        if (d.done && d.record) {
+          location.replace(buildViewUrl(d.record)); // 只读
+        }
+      } catch {}
+    })();
 
     btn.addEventListener('click', async () => {
       const remark = remarkEl.value || '';
@@ -60,8 +75,14 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ sid, unionid, dueTime, remark, detailUrl: viewUrl })
         });
+        const data = await r.json();
 
-        const data = await r.json();          // 函数保证返回 JSON
+        // 已提交过（409）→ 直接跳只读
+        if (r.status === 409 || data.error === 'already_submitted') {
+          location.replace(buildViewUrl(data.record || ''));
+          return;
+        }
+
         if (!r.ok || !data.ok) throw new Error(data.error || '提交失败');
 
         tip.className = 'tip ok';
@@ -72,10 +93,11 @@
           时间：${data.timeCN}<br>
           <a class="link" href="${viewUrl}" target="_blank">👉 查看详情</a>
         `;
+        // 成功后不再允许再次提交
+        btn.disabled = true;
       } catch (e) {
         tip.className = 'tip err';
         tip.textContent = e.message || String(e);
-      } finally {
         btn.disabled = false;
       }
     });
