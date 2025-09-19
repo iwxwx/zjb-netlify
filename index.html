@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="zh-CN">
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>任务确认</title>
 <body>
   <h2>请确认完成</h2>
@@ -12,7 +12,7 @@
   <div id="tip"></div>
 
   <script>
-    // 从 URL 取参数（sid/unionid/dueTime）
+    // 从 URL 取参数
     const qs = new URLSearchParams(location.search);
     const sid     = qs.get('sid') || '';
     const unionid = qs.get('unionid') || '';
@@ -30,25 +30,5 @@
         const r = await fetch('/.netlify/functions/feedback', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sid, unionid, dueTime, remark })
-        });
-
-        // 函数现在保证返回 JSON
-        const d = await r.json();
-        if (!r.ok || !d.ok) throw new Error(d.error || '提交失败');
-
-        tip.innerHTML = `
-          <p style="color:green">已记录完成</p>
-          <p>SID：<code>${d.sid}</code></p>
-          <p>备注：${d.remark || '—'}</p>
-          <p>时间：${d.timeCN}</p>
-        `;
-      } catch (e) {
-        tip.innerHTML = `<p style="color:red">${e.message || e}</p>`;
-      } finally {
-        btn.disabled = false;
-      }
-    };
-  </script>
-</body>
-</html>
+          // 关键：把当前页链接也传给函数，便于回推“查看详情”
+          body: JSON.stringify({ sid, unionid, dueTime, re
