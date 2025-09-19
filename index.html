@@ -3,69 +3,82 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>任务确认</title>
-<body>
-  <h2>请确认完成</h2>
-  <p>点击下方按钮即可回传完成状态；可填写备注。</p>
+<style>
+  :root { --fg:#111; --muted:#666; --ok:#2e7d32; --err:#d32f2f; --bd:#e9e9e9; }
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#fafafa;color:var(--fg);margin:0;padding:28px;}
+  .card{max-width:560px;margin:0 auto;background:#fff;border:1px solid var(--bd);border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,.03);padding:18px 20px;}
+  h2{margin:4px 0 10px 0}
+  p{margin:.4rem 0;color:var(--muted)}
+  textarea{width:100%;min-height:96px;resize:vertical;border:1px solid var(--bd);border-radius:8px;padding:10px;font:inherit}
+  button{margin-top:10px;border:1px solid var(--bd);background:#ffcf58;border-radius:8px;padding:8px 14px;cursor:pointer;font-weight:600}
+  button:disabled{opacity:.6;cursor:not-allowed}
+  .tip{margin-top:12px;line-height:1.6}
+  .tip.ok{color:var(--ok)}
+  .tip.err{color:var(--err)}
+  code{background:#f4f4f4;padding:0 4px;border-radius:4px}
+  a.link{display:inline-block;margin-top:6px;text-decoration:none}
+</style>
 
-  <textarea id="remark" rows="3" placeholder="例如：已完成，见截图…"></textarea><br/>
-  <button id="done">完成并提交</button>
-  <div id="tip" style="margin-top:10px;"></div>
-  <div id="dbg" style="margin-top:8px;color:#666;font-size:12px;"></div>
+<body>
+  <div class="card">
+    <h2>请确认完成</h2>
+    <p>点击下方按钮即可回传完成状态；可填写备注。</p>
+
+    <textarea id="remark" placeholder="例如：已完成，见截图…"></textarea><br/>
+    <button id="done">完成并提交</button>
+    <div id="tip" class="tip"></div>
+  </div>
 
   <script>
-    // 取 URL 参数
+    // 从 URL 取参数
     const qs = new URLSearchParams(location.search);
     const sid     = qs.get('sid') || '';
     const unionid = qs.get('unionid') || '';
     const dueTime = qs.get('dueTime') || '';
 
-    // 显示当前参数，方便你自查是否为空
-    document.getElementById('dbg').textContent =
-      `调试: sid=${sid || '(空)'} | unionid=${unionid || '(空)'} | dueTime=${dueTime || '(空)'}`;
-
     const tip = document.getElementById('tip');
     const btn = document.getElementById('done');
+    const remarkEl = document.getElementById('remark');
 
-    btn.onclick = async () => {
-      const remark = document.getElementById('remark').value || '';
+    // 生成只读详情页链接（view.html）
+    const buildViewUrl = (remark) => {
+      const p = new URLSearchParams({ sid, unionid, dueTime, remark });
+      return `${location.origin}/view.html?${p.toString()}`;
+    };
+
+    btn.addEventListener('click', async () => {
+      const remark = remarkEl.value || '';
+      const viewUrl = buildViewUrl(remark);
+
       btn.disabled = true;
-      tip.style.color = '#333';
+      tip.className = 'tip';
       tip.textContent = '正在提交…';
 
-      // 你的云函数路径
-      const fn = '/.netlify/functions/feedback';
-
       try {
-        const payload = { sid, unionid, dueTime, remark, detailUrl: location.href };
-        const r = await fetch(fn, {
+        const r = await fetch('/.netlify/functions/feedback', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
+          body: JSON.stringify({ sid, unionid, dueTime, remark, detailUrl: viewUrl })
         });
 
-        const text = await r.text();
-        let data;
-        // 容错解析：函数若返回纯文本也不会“没反应”
-        try { data = JSON.parse(text); } catch { data = { ok:false, error:'函数未返回JSON', raw:text }; }
+        const data = await r.json();          // 函数保证返回 JSON
+        if (!r.ok || !data.ok) throw new Error(data.error || '提交失败');
 
-        if (!r.ok || !data.ok) {
-          throw new Error(data.error || data.raw || ('HTTP ' + r.status));
-        }
-
-        tip.style.color = 'green';
-        tip.innerHTML =
-          `已记录完成<br>SID：<code>${data.sid}</code><br>备注：${data.remark || '—'}<br>时间：${data.timeCN}`;
+        tip.className = 'tip ok';
+        tip.innerHTML = `
+          已记录完成。<br>
+          SID：<code>${data.sid}</code><br>
+          备注：${data.remark || '—'}<br>
+          时间：${data.timeCN}<br>
+          <a class="link" href="${viewUrl}" target="_blank">👉 查看详情</a>
+        `;
       } catch (e) {
-        tip.style.color = 'red';
-        tip.textContent = (e && e.message) ? e.message : String(e);
-
-        // —— 兜底：自动跳到 GET 自测，避免“没反应”的体验 ——
-        const jump = `${fn}?sid=${encodeURIComponent(sid)}&unionid=${encodeURIComponent(unionid)}&dueTime=${encodeURIComponent(dueTime)}&remark=${encodeURIComponent(document.getElementById('remark').value || '')}&detailUrl=${encodeURIComponent(location.href)}`;
-        setTimeout(() => { location.href = jump; }, 600);
+        tip.className = 'tip err';
+        tip.textContent = e.message || String(e);
       } finally {
         btn.disabled = false;
       }
-    };
+    });
   </script>
 </body>
 </html>
