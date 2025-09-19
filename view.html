@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>任务详情</title>
+<body>
+  <h2>任务详情</h2>
+  <div id="box"></div>
+  <script>
+    const q = new URLSearchParams(location.search);
+    const sid     = q.get('sid') || '';
+    const unionid = q.get('unionid') || '';
+    const dueTime = q.get('dueTime') || '';
+    const remark  = q.get('remark') || '';
+
+    const fmtCN = (ms) => {
+      const n = Number(ms);
+      if (!Number.isFinite(n)) return '—';
+      return new Date(n + 8*3600*1000).toISOString().replace('T',' ').slice(0,19);
+    };
+
+    document.getElementById('box').innerHTML = `
+      <p><b>SID：</b><code>${sid}</code></p>
+      <p><b>执行人：</b>${unionid || '—'}</p>
+      <p><b>到期：</b>${fmtCN(dueTime)}</p>
+      <p><b>备注：</b>${remark || '—'}</p>
+      <p style="margin-top:12px;"><a href="/">返回</a></p>
+    `;
+  </script>
+</body>
+</html>
