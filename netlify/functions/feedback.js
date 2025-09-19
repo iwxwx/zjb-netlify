@@ -1,3 +1,4 @@
+// netlify/functions/feedback.js
 export async function handler(event) {
   const json = (code, obj) => ({
     statusCode: code,
@@ -6,16 +7,30 @@ export async function handler(event) {
   });
 
   try {
-    const q = event.queryStringParameters || {};
-    const sid     = q.sid || q.sourceId || "";
-    const unionid = q.unionid || "";
-    const dueTime = q.dueTime || "";
-    const remark  = q.remark ? decodeURIComponent(q.remark) : "";
+    // 1) 同时兼容 POST(JSON) 和 GET(query)
+    let sid = "", unionid = "", dueTime = "", remark = "";
+    if (event.httpMethod === "POST") {
+      try {
+        const b = JSON.parse(event.body || "{}");
+        sid = b.sid || b.sourceId || "";
+        unionid = b.unionid || "";
+        dueTime = b.dueTime || "";
+        remark = b.remark || "";
+      } catch { /* 忽略，走 query 兜底 */ }
+    }
+    if (!sid) {
+      const q = event.queryStringParameters || {};
+      sid = sid || q.sid || q.sourceId || "";
+      unionid = unionid || q.unionid || "";
+      dueTime = dueTime || q.dueTime || "";
+      remark = remark || (q.remark ? decodeURIComponent(q.remark) : "");
+    }
 
-    const timeCN = new Date(Date.now() + 8*3600*1000)
+    const timeCN = new Date(Date.now() + 8 * 3600 * 1000)
       .toISOString().replace("T"," ").slice(0,19);
 
-    const webhook = process.env.DING_WEBHOOK; // 必须存在
+    // 2) 推送到钉钉
+    const webhook = process.env.DING_WEBHOOK;
     if (!webhook) {
       return json(500, { ok:false, error:"Missing DING_WEBHOOK env" });
     }
@@ -27,7 +42,7 @@ export async function handler(event) {
         text:
           `### ✅ 任务完成\n` +
           `- **SID**：\`${sid}\`\n` +
-          `- **备注**：${remark || "—"}\n` +
+          `- **备注**：${(remark || "—")}\n` +
           `- **时间**：${timeCN}\n`,
       },
     };
