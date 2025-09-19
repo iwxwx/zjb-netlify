@@ -1,4 +1,6 @@
 // netlify/functions/feedback.js
+import crypto from "crypto";
+
 export async function handler(event) {
   const json = (code, obj) => ({
     statusCode: code,
@@ -7,7 +9,7 @@ export async function handler(event) {
   });
 
   try {
-    // 1) 同时兼容 POST(JSON) 和 GET(query)
+    // 1) 兼容 POST(JSON) 与 GET(query)
     let sid = "", unionid = "", dueTime = "", remark = "";
     if (event.httpMethod === "POST") {
       try {
@@ -16,7 +18,7 @@ export async function handler(event) {
         unionid = b.unionid || "";
         dueTime = b.dueTime || "";
         remark = b.remark || "";
-      } catch { /* 忽略，走 query 兜底 */ }
+      } catch {}
     }
     if (!sid) {
       const q = event.queryStringParameters || {};
@@ -29,12 +31,29 @@ export async function handler(event) {
     const timeCN = new Date(Date.now() + 8 * 3600 * 1000)
       .toISOString().replace("T"," ").slice(0,19);
 
-    // 2) 推送到钉钉
-    const webhook = process.env.DING_WEBHOOK;
-    if (!webhook) {
-      return json(500, { ok:false, error:"Missing DING_WEBHOOK env" });
+    // 2) 读取 webhook（兼容两种变量名）
+    const baseWebhook =
+      process.env.DING_WEBHOOK || process.env.DINGTALK_WEBHOOK || "";
+    if (!baseWebhook) {
+      return json(500, { ok:false, error:"Missing DING_WEBHOOK / DINGTALK_WEBHOOK env" });
     }
 
+    // 3) 如有 SECRET，自动加签（兼容两种变量名）
+    const secret = process.env.DING_SECRET || process.env.DINGTALK_SECRET || "";
+    let webhook = baseWebhook;
+    if (secret) {
+      const timestamp = Date.now();
+      const stringToSign = `${timestamp}\n${secret}`;
+      const sign = crypto.createHmac("sha256", secret)
+        .update(stringToSign)
+        .digest("base64"); // URLSearchParams 会自动进行 URL 编码
+      const u = new URL(baseWebhook);
+      u.searchParams.set("timestamp", String(timestamp));
+      u.searchParams.set("sign", sign);
+      webhook = u.toString();
+    }
+
+    // 4) 发送 Markdown
     const payload = {
       msgtype: "markdown",
       markdown: {
@@ -42,7 +61,7 @@ export async function handler(event) {
         text:
           `### ✅ 任务完成\n` +
           `- **SID**：\`${sid}\`\n` +
-          `- **备注**：${(remark || "—")}\n` +
+          `- **备注**：${remark || "—"}\n` +
           `- **时间**：${timeCN}\n`,
       },
     };
