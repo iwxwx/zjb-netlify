@@ -9,14 +9,19 @@
 
   <textarea id="remark" rows="3" placeholder="例如：已完成，见截图…"></textarea><br/>
   <button id="done">完成并提交</button>
-  <div id="tip"></div>
+  <div id="tip" style="margin-top:10px;"></div>
+  <div id="dbg" style="margin-top:8px;color:#666;font-size:12px;"></div>
 
   <script>
-    // 从 URL 取参数
+    // 取 URL 参数
     const qs = new URLSearchParams(location.search);
     const sid     = qs.get('sid') || '';
     const unionid = qs.get('unionid') || '';
     const dueTime = qs.get('dueTime') || '';
+
+    // 显示当前参数，方便你自查是否为空
+    document.getElementById('dbg').textContent =
+      `调试: sid=${sid || '(空)'} | unionid=${unionid || '(空)'} | dueTime=${dueTime || '(空)'}`;
 
     const tip = document.getElementById('tip');
     const btn = document.getElementById('done');
@@ -24,11 +29,43 @@
     btn.onclick = async () => {
       const remark = document.getElementById('remark').value || '';
       btn.disabled = true;
-      tip.innerHTML = '';
+      tip.style.color = '#333';
+      tip.textContent = '正在提交…';
+
+      // 你的云函数路径
+      const fn = '/.netlify/functions/feedback';
 
       try {
-        const r = await fetch('/.netlify/functions/feedback', {
+        const payload = { sid, unionid, dueTime, remark, detailUrl: location.href };
+        const r = await fetch(fn, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          // 关键：把当前页链接也传给函数，便于回推“查看详情”
-          body: JSON.stringify({ sid, unionid, dueTime, re
+          body: JSON.stringify(payload)
+        });
+
+        const text = await r.text();
+        let data;
+        // 容错解析：函数若返回纯文本也不会“没反应”
+        try { data = JSON.parse(text); } catch { data = { ok:false, error:'函数未返回JSON', raw:text }; }
+
+        if (!r.ok || !data.ok) {
+          throw new Error(data.error || data.raw || ('HTTP ' + r.status));
+        }
+
+        tip.style.color = 'green';
+        tip.innerHTML =
+          `已记录完成<br>SID：<code>${data.sid}</code><br>备注：${data.remark || '—'}<br>时间：${data.timeCN}`;
+      } catch (e) {
+        tip.style.color = 'red';
+        tip.textContent = (e && e.message) ? e.message : String(e);
+
+        // —— 兜底：自动跳到 GET 自测，避免“没反应”的体验 ——
+        const jump = `${fn}?sid=${encodeURIComponent(sid)}&unionid=${encodeURIComponent(unionid)}&dueTime=${encodeURIComponent(dueTime)}&remark=${encodeURIComponent(document.getElementById('remark').value || '')}&detailUrl=${encodeURIComponent(location.href)}`;
+        setTimeout(() => { location.href = jump; }, 600);
+      } finally {
+        btn.disabled = false;
+      }
+    };
+  </script>
+</body>
+</html>
